@@ -79,7 +79,7 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const MAX_MESSAGES = 12;
 const MAX_CHARS_PER_MESSAGE = 1200;
 const MAX_TOTAL_CHARS = 6000;
-const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 const DAILY_REQUEST_CAP = 200;
 const DAILY_CAP_WINDOW_SECONDS = 60 * 60 * 24;
@@ -499,7 +499,7 @@ function getRateLimitError(rateLimit) {
     return "The chatbot has reached its daily usage cap. Please try again tomorrow.";
   }
 
-  return "Rate limit exceeded. Please try again later.";
+  return "Rate limit exceeded for this session. Please try again after 1 hour.";
 }
 
 module.exports = async function handler(req, res) {
