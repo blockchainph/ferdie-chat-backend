@@ -281,6 +281,23 @@ async function checkRateLimit(ip) {
   };
 }
 
+async function checkRateLimitSafe(ip) {
+  try {
+    return await checkRateLimit(ip);
+  } catch (error) {
+    console.error("Rate limit backend failure:", error);
+    return {
+      allowed: true,
+      count: 0,
+      remaining: RATE_LIMIT_MAX,
+      dailyCount: 0,
+      dailyRemaining: DAILY_REQUEST_CAP,
+      resetSeconds: RATE_LIMIT_WINDOW_SECONDS,
+      degraded: true,
+    };
+  }
+}
+
 async function streamOpenAIResponse(messages, res, corsHeaders) {
   const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -479,6 +496,10 @@ function getStatusCode(error) {
     return 502;
   }
 
+  if (message.includes("fetch failed")) {
+    return 502;
+  }
+
   return 400;
 }
 
@@ -544,7 +565,7 @@ module.exports = async function handler(req, res) {
   if (isHandoff) {
     try {
       const ip = getClientIp(req);
-      const rateLimit = await checkRateLimit(ip);
+      const rateLimit = await checkRateLimitSafe(ip);
 
       if (!rateLimit.allowed) {
         res.writeHead(429, {
@@ -589,13 +610,18 @@ module.exports = async function handler(req, res) {
       res.end(JSON.stringify({ ok: true }));
       return;
     } catch (error) {
+      console.error("Handoff handler error:", error);
+      const message = error instanceof Error ? error.message : "Unexpected server error.";
+      const userMessage = message.includes("fetch failed")
+        ? "The AI service is temporarily unavailable. Please try again shortly."
+        : message;
       res.writeHead(getStatusCode(error), {
         ...corsHeaders,
         "Content-Type": "application/json",
       });
       res.end(
         JSON.stringify({
-          error: error instanceof Error ? error.message : "Unexpected server error.",
+          error: userMessage,
         })
       );
       return;
@@ -622,7 +648,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const ip = getClientIp(req);
-    const rateLimit = await checkRateLimit(ip);
+    const rateLimit = await checkRateLimitSafe(ip);
 
     if (!rateLimit.allowed) {
       res.writeHead(429, {
@@ -638,13 +664,18 @@ module.exports = async function handler(req, res) {
     assertNoAbuse(messages);
     await streamProviderResponse(messages, res, corsHeaders);
   } catch (error) {
+    console.error("Chat handler error:", error);
+    const message = error instanceof Error ? error.message : "Unexpected server error.";
+    const userMessage = message.includes("fetch failed")
+      ? "The AI service is temporarily unavailable. Please try again shortly."
+      : message;
     res.writeHead(getStatusCode(error), {
       ...corsHeaders,
       "Content-Type": "application/json",
     });
     res.end(
       JSON.stringify({
-        error: error instanceof Error ? error.message : "Unexpected server error.",
+        error: userMessage,
       })
     );
   }
